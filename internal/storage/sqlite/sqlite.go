@@ -2,23 +2,22 @@ package sqlite
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/mattn/go-sqlite3"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/yahorchik/TaskStorage/internal/storage"
-	"time"
 )
 
 type Storage struct {
 	db *sql.DB
 }
 type Task struct {
-	Id         int64
 	Name       string
 	Desk       string
-	Tags       string
-	CreateData time.Time
-	Deadline   time.Time
+	Tag        string
+	CreateData string
+	Deadline   string
 }
 
 func New(storagePath string) (*Storage, error) {
@@ -32,7 +31,7 @@ func New(storagePath string) (*Storage, error) {
 	   id INTEGER PRIMARY KEY,
 	   name TEXT NOT NULL UNIQUE,
 	   desk TEXT NOT NULL,
-	   tags TEXT NOT NULL,
+	   tag TEXT NOT NULL,
 	   create_data TEXT NOT NULL,
 	   deadline TEXT NOT NULL);
 	CREATE INDEX IF NOT EXISTS idx_id on task(name)
@@ -51,11 +50,11 @@ func New(storagePath string) (*Storage, error) {
 func (s *Storage) SaveTask(taskToSave Task) (int64, error) {
 	const op = "storage.sqlite.SaveTask"
 
-	stmt, err := s.db.Prepare("INSERT INTO task(name, desk, tags, create_data, deadline) VALUES ( ?, ?, ?, ?, ?)")
+	stmt, err := s.db.Prepare("INSERT INTO task(name, desk, tag, create_data, deadline) VALUES ( ?, ?, ?, ?, ?)")
 	if err != nil {
 		return 0, fmt.Errorf("%s: %w", op, err)
 	}
-	res, err := stmt.Exec(taskToSave.Name, taskToSave.Desk, taskToSave.Tags, taskToSave.CreateData, taskToSave.Deadline)
+	res, err := stmt.Exec(taskToSave.Name, taskToSave.Desk, taskToSave.Tag, taskToSave.CreateData, taskToSave.Deadline)
 	if err != nil {
 		if sqliteErr, ok := err.(sqlite3.Error); ok && sqliteErr.ExtendedCode == sqlite3.ErrConstraintCheck {
 			return 0, fmt.Errorf("%s: %w", op, storage.ErrTaskExists)
@@ -67,4 +66,23 @@ func (s *Storage) SaveTask(taskToSave Task) (int64, error) {
 		return 0, fmt.Errorf("%s: %w", op, err)
 	}
 	return id, nil
+}
+
+func (s *Storage) GetTask(idTask int64) (Task, error) {
+	const op = "storage.sqlite.GetTask"
+	stmt, err := s.db.Prepare("SELECT * FROM task WHERE id =?")
+	if err != nil {
+		return Task{}, fmt.Errorf("%s: %w", op, err)
+	}
+	var resTask Task
+	var resId int
+	err = stmt.QueryRow(idTask).Scan(&resId, &resTask.Name, &resTask.Desk, &resTask.Tag, &resTask.CreateData, &resTask.Deadline)
+	if errors.Is(err, sql.ErrNoRows) {
+		return resTask, storage.ErrTaskExists
+	}
+	if err != nil {
+		return resTask, fmt.Errorf("%s: %w", op, err)
+	}
+	return resTask, nil
+
 }
